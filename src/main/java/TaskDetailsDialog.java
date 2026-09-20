@@ -1,197 +1,116 @@
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.util.UUID;
-import org.json.simple.JSONObject;
 
 public class TaskDetailsDialog extends JDialog {
-    private JTextArea detailsArea;
-    private JPanel buttonPanel;
-    private JSONObject task;
-    private UserP user;
-    private TaskController taskController;
-    private AccountManager accountManager;
+    private final TaskView task;
+    private final UserP user;
+    private final TaskApplicationService tasks;
+    private final JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
 
-    public TaskDetailsDialog(Window owner, JSONObject task, UserP user, TaskController taskController, AccountManager accountManager) {
-        super(owner, "Task Details", ModalityType.APPLICATION_MODAL);
-        this.task = task;
-        this.user = user;
-        this.taskController = taskController;
-        this.accountManager = accountManager;
-
-        initializeComponents();
-        layoutComponents();
-        registerEventHandlers();
-        populateFields();
+    public TaskDetailsDialog(Window owner, TaskView task, UserP user, TaskApplicationService tasks) {
+        super(owner, "Task details", ModalityType.APPLICATION_MODAL);
+        this.task = task; this.user = user; this.tasks = tasks;
+        setContentPane(buildContent());
+        setSize(720, 610); setMinimumSize(new Dimension(660, 560)); setLocationRelativeTo(owner);
     }
 
-    private void initializeComponents() {
-        detailsArea = new JTextArea();
-        detailsArea.setEditable(false);
-        buttonPanel = new JPanel(new FlowLayout());
+    private JPanel buildContent() {
+        JPanel root = AppTheme.page();
+        JPanel header = new JPanel(new BorderLayout(12, 6)); header.setOpaque(false);
+        JPanel copy = new JPanel(); copy.setOpaque(false); copy.setLayout(new BoxLayout(copy, BoxLayout.Y_AXIS));
+        copy.add(AppTheme.title(task.name())); copy.add(Box.createVerticalStrut(4));
+        copy.add(AppTheme.muted("Created by " + fallback(task.creatorName(), "a family member")));
+        JLabel status = new JLabel(friendlyStatus(task.status())); status.setOpaque(true);
+        status.setBackground(AppTheme.SOFT_BLUE); status.setForeground(AppTheme.PRIMARY);
+        status.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+        header.add(copy, BorderLayout.CENTER); header.add(status, BorderLayout.EAST); root.add(header, BorderLayout.NORTH);
+
+        JPanel body = new JPanel(new BorderLayout(0, 14)); body.setOpaque(false);
+        JPanel facts = AppTheme.card(new GridLayout(0, 2, 14, 12));
+        fact(facts, "Assignee", fallback(task.assigneeName(), "Unassigned"));
+        fact(facts, "Collaborator", fallback(task.collaboratorName(), "None"));
+        fact(facts, "Start", task.startTime()); fact(facts, "Deadline", task.endTime());
+        fact(facts, "Urgency", Integer.toString(task.urgency())); fact(facts, "Repeat", fallback(task.repeat(), "None"));
+        fact(facts, "Reward", AppTheme.money(task.reward()));
+        fact(facts, "Bonus", AppTheme.money(task.bonus()) + " / " + AppTheme.money(task.maxBonus()));
+        body.add(facts, BorderLayout.NORTH);
+        JPanel description = AppTheme.card(new BorderLayout(0, 8));
+        description.add(AppTheme.fieldLabel("Description"), BorderLayout.NORTH);
+        JTextArea text = new JTextArea(fallback(task.description(), "No description provided."));
+        text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true); text.setOpaque(false);
+        text.setForeground(AppTheme.MUTED); text.setFont(AppTheme.BODY); description.add(text, BorderLayout.CENTER);
+        body.add(description, BorderLayout.CENTER); root.add(body, BorderLayout.CENTER);
+
+        actions.setOpaque(false); configureActions(); root.add(actions, BorderLayout.SOUTH);
+        return root;
     }
 
-    private void layoutComponents() {
-        setLayout(new BorderLayout());
-
-        add(new JScrollPane(detailsArea), BorderLayout.CENTER);
-        add(buttonPanel, BorderLayout.SOUTH);
-
-        setSize(500, 300);
-        setLocationRelativeTo(getOwner());
+    private void fact(JPanel panel, String label, String value) {
+        JPanel cell = new JPanel(); cell.setOpaque(false); cell.setLayout(new BoxLayout(cell, BoxLayout.Y_AXIS));
+        cell.add(AppTheme.muted(label.toUpperCase())); cell.add(Box.createVerticalStrut(3));
+        JLabel content = new JLabel(value); content.setFont(AppTheme.BODY); content.setForeground(AppTheme.TEXT); cell.add(content);
+        panel.add(cell);
     }
 
-    private void registerEventHandlers() {
-        String userType = user.getUserType();
-        String taskStatus = (String) task.get("status");
-
-        if ("child".equals(userType)) {
-            if ("ToDo".equals(taskStatus)) {
-                addButton("Accept Task", e -> updateTaskStatus("Doing"));
-            } else if ("Doing".equals(taskStatus)) {
-                addButton("Complete Task", e -> updateTaskStatus("WaitforConfirm"));
-            }
-        } else if ("parent".equals(userType)) {
-            if ("WaitforCheck".equals(taskStatus)) {
-                addButton("Approve Task", e -> approveTask());
-                addButton("Reject Task", e -> rejectTask());
-            } else if ("WaitforConfirm".equals(taskStatus)) {
-                addButton("Confirm Completion", e -> confirmCompletion());
-                addButton("Modify Reward", e -> openModifyRewardDialog());
-            } else if ("ToDo".equals(taskStatus) || "WaitforCheck".equals(taskStatus)) {
-                addButton("Modify Task", e -> openModifyTaskDialog());
-                addButton("Delete Task", e -> deleteTask());
-            }
+    private void configureActions() {
+        if ("child".equals(user.getUserType())) {
+            if ("ToDo".equals(task.status())) addPrimary("Accept task", () -> changeStatus("Doing"));
+            else if ("Doing".equals(task.status())) addPrimary("Mark complete", () -> changeStatus("WaitforConfirm"));
+            return;
+        }
+        if (!"parent".equals(user.getUserType())) return;
+        if ("WaitforCheck".equals(task.status())) {
+            addSecondary("Reject", () -> changeStatus("Reject")); addPrimary("Approve", () -> changeStatus("ToDo"));
+        } else if ("WaitforConfirm".equals(task.status())) {
+            addSecondary("Adjust bonus", this::openRewardDialog); addPrimary("Confirm & pay", this::confirmCompletion);
+        } else if ("ToDo".equals(task.status())) {
+            addDanger("Delete", this::deleteTask); addPrimary("Edit task", this::openModifyDialog);
         }
     }
 
-    private void approveTask() {
-        if ("parent".equals(user.getUserType())) {
-            taskController.updateTaskStatus(UUID.fromString((String) task.get("TaskID")), "ToDo", user);
-            JOptionPane.showMessageDialog(this, "Task approved.");
-            dispose();
-        }
-    }
-
-    private void rejectTask() {
-        if ("parent".equals(user.getUserType())) {
-            taskController.updateTaskStatus(UUID.fromString((String) task.get("TaskID")), "Reject", user);
-            JOptionPane.showMessageDialog(this, "Task rejected.");
-            dispose();
-        }
+    private void changeStatus(String value) {
+        try { tasks.changeStatus(task.id(), value, user); AppTheme.showSuccess(this, "Task status updated."); dispose(); }
+        catch (RuntimeException exception) { AppTheme.showError(this, exception.getMessage()); }
     }
 
     private void confirmCompletion() {
-        if ("parent".equals(user.getUserType())) {
-            double reward = (Double) task.get("reward");
-            double bonus = (Double) task.get("bonus");
-            double totalAmount = reward + bonus;
-
-            IAccount parentAccount = accountManager.getParentAccount(user.getUserId());
-            IAccount childAccount = accountManager.getChildCheckingAccount((String) task.get("assignee"));
-
-            if (childAccount != null) {
-                try {
-                    accountManager.transfer(parentAccount.getAccountId(), childAccount.getAccountId(), totalAmount, null);
-                    taskController.updateTaskStatus(UUID.fromString((String) task.get("TaskID")), "Done", user);
-                    JOptionPane.showMessageDialog(this, "Task confirmed and reward transferred.");
-                    dispose();
-                } catch (InsufficientFundsException e) {
-                    JOptionPane.showMessageDialog(this, "Transfer failed: " + e.getMessage());
-                }
-            } else {
-                JOptionPane.showMessageDialog(this, "Child does not have a checking account to receive the reward.");
-            }
-        }
-    }
-
-    private void addButton(String text, ActionListener actionListener) {
-        JButton button = new JButton(text);
-        button.addActionListener(actionListener);
-        buttonPanel.add(button);
-    }
-
-    private void populateFields() {
-        detailsArea.setText(formatTaskDetails(task));
-    }
-
-    private void updateTaskStatus(String newStatus) {
-        taskController.updateTaskStatus(UUID.fromString((String) task.get("TaskID")), newStatus, user);
-        dispose();
+        try { tasks.confirmCompletion(task, user); AppTheme.showSuccess(this, "Completion confirmed and reward transferred."); dispose(); }
+        catch (InsufficientFundsException | RuntimeException exception) { AppTheme.showError(this, exception.getMessage()); }
     }
 
     private void deleteTask() {
-        int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to delete this task?", "Delete Confirmation", JOptionPane.YES_NO_OPTION);
-        if (confirm == JOptionPane.YES_OPTION) {
-            taskController.deleteTask(UUID.fromString((String) task.get("TaskID")), user);
-            dispose();
-        }
+        if (JOptionPane.showConfirmDialog(this, "Delete this task permanently?", "Delete task", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        try { tasks.deleteTask(task.id(), user); dispose(); }
+        catch (RuntimeException exception) { AppTheme.showError(this, exception.getMessage()); }
     }
 
-    private void openModifyTaskDialog() {
-        JFrame modifyTaskFrame = new JFrame("Modify Task");
-        modifyTaskFrame.setContentPane(new ModifyTaskPanel(task, user, taskController).getMainPanel());
-        modifyTaskFrame.pack();
-        modifyTaskFrame.setLocationRelativeTo(null);
-        modifyTaskFrame.setVisible(true);
+    private void openModifyDialog() {
+        JDialog dialog = new JDialog(this, "Edit task", true);
+        dialog.setContentPane(new ModifyTaskPanel(task, user, tasks).getMainPanel());
+        dialog.setSize(720, 660); dialog.setLocationRelativeTo(this); dialog.setVisible(true); dispose();
     }
 
-    private void openModifyRewardDialog() {
-        JDialog rewardEditDialog = new JDialog(this, "Modify Reward", true);
-        rewardEditDialog.setLayout(new BorderLayout());
-
-        Double maxBonus = (Double) task.get("maxBonus");
-
-        JSlider bonusSlider = new JSlider(0, 100, 0);
-        bonusSlider.setMajorTickSpacing(10);
-        bonusSlider.setMinorTickSpacing(1);
-        bonusSlider.setPaintTicks(true);
-        bonusSlider.setPaintLabels(true);
-        bonusSlider.setBackground(Color.WHITE);
-
-        rewardEditDialog.add(bonusSlider, BorderLayout.CENTER);
-
-        JPanel confirmPanel = new JPanel();
-        JButton confirmButton = new JButton("Confirm");
-        confirmButton.addActionListener(e -> {
-            int bonusPercentage = bonusSlider.getValue();
-            double actualBonus = bonusPercentage / 100.0 * maxBonus;
-            task.put("bonus", actualBonus);
-            taskController.modifyTask(UUID.fromString((String) task.get("TaskID")), task, user);
-            rewardEditDialog.dispose();
-            dispose();
-        });
-        confirmPanel.add(confirmButton);
-
-        rewardEditDialog.add(confirmPanel, BorderLayout.SOUTH);
-        rewardEditDialog.setSize(300, 200);
-        rewardEditDialog.setLocationRelativeTo(null);
-        rewardEditDialog.setVisible(true);
+    private void openRewardDialog() {
+        JSlider slider = new JSlider(0, 100, task.maxBonus() == 0 ? 0 : (int) Math.round(task.bonus() / task.maxBonus() * 100));
+        slider.setMajorTickSpacing(25); slider.setPaintTicks(true); slider.setPaintLabels(true);
+        JPanel panel = new JPanel(new BorderLayout(0, 10));
+        panel.add(new JLabel("Choose a percentage of the maximum bonus (" + AppTheme.money(task.maxBonus()) + ")."), BorderLayout.NORTH);
+        panel.add(slider, BorderLayout.CENTER);
+        if (JOptionPane.showConfirmDialog(this, panel, "Adjust bonus", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+        try { tasks.updateBonus(task.id(), slider.getValue() / 100.0 * task.maxBonus(), user); AppTheme.showSuccess(this, "Bonus updated."); dispose(); }
+        catch (RuntimeException exception) { AppTheme.showError(this, exception.getMessage()); }
     }
 
-    private String formatTaskDetails(JSONObject taskData) {
-        StringBuilder details = new StringBuilder();
-        details.append("Task Name: ").append(taskData.get("name")).append("\n");
-        details.append("Description: ").append(taskData.get("description")).append("\n");
-        details.append("Urgency: ").append(taskData.get("urgency")).append("\n");
-        details.append("Repeat: ").append(taskData.get("repeat")).append("\n");
-        details.append("Reward: ").append(taskData.get("reward")).append("\n");
-        details.append("Max Bonus: ").append(taskData.get("maxBonus")).append("\n");
-        details.append("Bonus: ").append(taskData.get("bonus")).append("\n");
-        details.append("Start Time: ").append(taskData.get("startTime")).append("\n");
-        details.append("End Time: ").append(taskData.get("endTime")).append("\n");
-        details.append("Assignee: ").append(taskData.get("assigneeName")).append("\n");
-        details.append("Collaborator: ").append(taskData.get("collaboratorName")).append("\n");
-        details.append("Creator: ").append(taskData.get("creatorName")).append("\n");
-        details.append("Status: ").append(taskData.get("status")).append("\n");
-        details.append("Settlement Type: ").append(taskData.get("settlementType")).append("\n");
-        if (taskData.get("actualStartTime") != null) {
-            details.append("Actual Start Time: ").append(taskData.get("actualStartTime")).append("\n");
-        }
-        if (taskData.get("timedDuration") != null) {
-            details.append("Timed Duration: ").append(taskData.get("timedDuration")).append("\n");
-        }
-        return details.toString();
+    private void addPrimary(String text, Runnable action) { addButton(AppTheme.primaryButton(text), action); }
+    private void addSecondary(String text, Runnable action) { addButton(AppTheme.secondaryButton(text), action); }
+    private void addDanger(String text, Runnable action) { addButton(AppTheme.dangerButton(text), action); }
+    private void addButton(JButton button, Runnable action) { button.addActionListener(e -> action.run()); actions.add(button); }
+    private static String fallback(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }
+    private static String friendlyStatus(String status) {
+        return switch (status) {
+            case "WaitforCheck" -> "Pending approval"; case "Reject" -> "Rejected"; case "ToDo" -> "To do";
+            case "Doing" -> "In progress"; case "WaitforConfirm" -> "Awaiting confirmation";
+            case "Done" -> "Completed"; case "OverDue" -> "Overdue"; default -> status;
+        };
     }
 }

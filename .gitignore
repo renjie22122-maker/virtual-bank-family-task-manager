@@ -44,4 +44,5 @@ transactions.json
 users.json
 error_log.txt
 logout_log.txt
+app-*.log
 *.bak

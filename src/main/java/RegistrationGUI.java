@@ -1,127 +1,100 @@
 import javax.swing.*;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.util.UUID;
 
 public class RegistrationGUI extends JFrame {
-    private JTextField userNameField;
-    private JPasswordField passwordField;
-    private JPasswordField confirmPasswordField;
-    private JComboBox<String> userTypeComboBox;
-    private JTextField familyGroupIdField;
-    private JButton registerButton;
-    private UserController userController;
+    private final JTextField userNameField = AppTheme.field(new JTextField(22));
+    private final JPasswordField passwordField = AppTheme.field(new JPasswordField(22));
+    private final JPasswordField confirmPasswordField = AppTheme.field(new JPasswordField(22));
+    private final JComboBox<String> userTypeComboBox = AppTheme.field(new JComboBox<>(new String[]{"parent", "child"}));
+    private final JTextField familyGroupIdField = AppTheme.field(new JTextField(22));
+    private final JLabel familyHint = AppTheme.muted("Optional — a new family ID will be generated.");
+    private final JButton registerButton = AppTheme.primaryButton("Create account");
+    private final UserController userController = new UserController();
 
     public RegistrationGUI() {
-        userController = new UserController();
-        initializeComponents();
-        layoutComponents();
-        registerEventHandlers();
+        AppTheme.install();
+        AppTheme.configureFrame(this, "Create account · FamilyFlow Bank", 520, 690);
+        setContentPane(buildContent());
+        getRootPane().setDefaultButton(registerButton);
+        userTypeComboBox.addActionListener(e -> updateFamilyHint());
+        registerButton.addActionListener(e -> registerUser());
     }
 
-    private void initializeComponents() {
-        setTitle("User Registration");
-        setSize(300, 400);
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setLocationRelativeTo(null);
+    private JPanel buildContent() {
+        JPanel root = AppTheme.page();
+        JPanel header = new JPanel();
+        header.setOpaque(false);
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.add(AppTheme.title("Create your profile"));
+        header.add(Box.createVerticalStrut(6));
+        header.add(AppTheme.muted("Parents create a family space; children join with its family ID."));
+        root.add(header, BorderLayout.NORTH);
 
-        userNameField = new JTextField(15);
-        passwordField = new JPasswordField(15);
-        confirmPasswordField = new JPasswordField(15);
-        userTypeComboBox = new JComboBox<>(new String[]{"parent", "child"});
-        familyGroupIdField = new JTextField(15);
-        registerButton = new JButton("Register");
+        JPanel form = AppTheme.card(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.weightx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        addField(form, gbc, 0, "Username", userNameField);
+        addField(form, gbc, 2, "Password (at least 6 characters)", passwordField);
+        addField(form, gbc, 4, "Confirm password", confirmPasswordField);
+        addField(form, gbc, 6, "Profile type", userTypeComboBox);
+        addField(form, gbc, 8, "Family group ID", familyGroupIdField);
+        gbc.gridy = 10;
+        gbc.insets = new Insets(5, 0, 0, 0);
+        form.add(familyHint, gbc);
+        gbc.gridy = 11;
+        gbc.insets = new Insets(18, 0, 0, 0);
+        form.add(registerButton, gbc);
+        root.add(form, BorderLayout.CENTER);
+        return root;
     }
 
-    private void layoutComponents() {
-        setLayout(new GridLayout(7, 2));
-
-        add(new JLabel("Username:"));
-        add(userNameField);
-        add(new JLabel("Password:"));
-        add(passwordField);
-        add(new JLabel("Confirm Password:"));
-        add(confirmPasswordField);
-        add(new JLabel("User Type:"));
-        add(userTypeComboBox);
-        add(new JLabel("Family Group ID:"));
-        add(familyGroupIdField);
-        add(registerButton);
+    private void addField(JPanel panel, GridBagConstraints gbc, int row, String label, JComponent field) {
+        gbc.gridy = row;
+        gbc.insets = new Insets(row == 0 ? 0 : 13, 0, 6, 0);
+        panel.add(AppTheme.fieldLabel(label), gbc);
+        gbc.gridy = row + 1;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(field, gbc);
     }
 
-    private void registerEventHandlers() {
-        registerButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                registerUser();
-            }
-        });
-
-        userTypeComboBox.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (userTypeComboBox.getSelectedItem().equals("parent")) {
-                    familyGroupIdField.setEditable(true);
-                } else {
-                    familyGroupIdField.setEditable(true);
-                }
-            }
-        });
+    private void updateFamilyHint() {
+        boolean child = "child".equals(userTypeComboBox.getSelectedItem());
+        familyHint.setText(child ? "Required — ask a parent for the family ID." : "Optional — a new family ID will be generated.");
+        familyGroupIdField.setToolTipText(familyHint.getText());
     }
 
     private void registerUser() {
         String userName = userNameField.getText().trim();
         String password = new String(passwordField.getPassword());
-        String confirmPassword = new String(confirmPasswordField.getPassword());
+        String confirmation = new String(confirmPasswordField.getPassword());
         String userType = (String) userTypeComboBox.getSelectedItem();
         String familyGroupId = familyGroupIdField.getText().trim();
-
-        if (userName.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Username cannot be empty!", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-        if (password.length() < 6) {
-            JOptionPane.showMessageDialog(this, "Password must contain at least 6 characters!", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        if (!password.equals(confirmPassword)) {
-            JOptionPane.showMessageDialog(this, "Passwords do not match!", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        if (userType.equals("parent") && familyGroupId.isEmpty()) {
-            familyGroupId = UUID.randomUUID().toString();
-        } else if (userType.equals("child") && familyGroupId.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Family Group ID is required for children!", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
+        if (userName.isEmpty()) { AppTheme.showError(this, "Username cannot be empty."); return; }
+        if (password.length() < 6) { AppTheme.showError(this, "Password must contain at least 6 characters."); return; }
+        if (!password.equals(confirmation)) { AppTheme.showError(this, "Passwords do not match."); return; }
+        if ("parent".equals(userType) && familyGroupId.isEmpty()) familyGroupId = UUID.randomUUID().toString();
+        if ("child".equals(userType) && familyGroupId.isEmpty()) { AppTheme.showError(this, "Children need a family group ID."); return; }
 
         UserP newUser = new UserP();
         newUser.setUserName(userName);
         newUser.setPassword(password);
         newUser.setUserType(userType);
         newUser.setFamilyGroupId(familyGroupId);
-
         try {
-        if (userController.register(newUser)) {
-            String userId = newUser.getUserId(); // 确保获取注册后的UserP对象的userId
-            JOptionPane.showMessageDialog(this, "Registration successful!\nFamily Group ID: " + familyGroupId + "\nUser ID: " + userId, "Success", JOptionPane.INFORMATION_MESSAGE);
-            // 复制信息到剪贴板
-            StringSelection selection = new StringSelection("Family Group ID: " + familyGroupId + "\nUser ID: " + userId);
-            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+            if (!userController.register(newUser)) {
+                AppTheme.showError(this, "That username is already registered.");
+                return;
+            }
+            String summary = "Family Group ID: " + familyGroupId + "\nUser ID: " + newUser.getUserId();
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(summary), null);
+            AppTheme.showSuccess(this, "Account created. Your family and user IDs were copied to the clipboard.\n\n" + summary);
             dispose();
-        } else {
-            JOptionPane.showMessageDialog(this, "That username is already registered!", "Error", JOptionPane.ERROR_MESSAGE);
-        }
         } catch (IllegalArgumentException ex) {
-            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            AppTheme.showError(this, ex.getMessage());
         }
-    }
-
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new RegistrationGUI().setVisible(true));
     }
 }

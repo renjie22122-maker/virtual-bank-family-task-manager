@@ -1,98 +1,109 @@
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.FocusAdapter;
-import java.awt.event.FocusEvent;
 import java.util.List;
 
 public class LoginGUI extends JFrame {
-    private JTextField userNameField;
-    JPasswordField passwordField;
-    private JComboBox<String> userIdComboBox;
-    private JButton loginButton;
-    private UserController userController;
+    private final JTextField userNameField = AppTheme.field(new JTextField(22));
+    final JPasswordField passwordField = AppTheme.field(new JPasswordField(22));
+    private final JComboBox<String> userIdComboBox = AppTheme.field(new JComboBox<>());
+    private final JButton loginButton = AppTheme.primaryButton("Sign in");
+    private final UserController userController = new UserController();
 
     public LoginGUI() {
-        userController = new UserController();
-        initializeComponents();
-        layoutComponents();
+        AppTheme.install();
+        AppTheme.configureFrame(this, "Sign in · FamilyFlow Bank", 480, 560);
+        setContentPane(buildContent());
+        getRootPane().setDefaultButton(loginButton);
         registerEventHandlers();
     }
 
-    private void initializeComponents() {
-        setTitle("User Login");
-        setSize(300, 200);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
+    private JPanel buildContent() {
+        JPanel root = AppTheme.page();
+        JPanel header = new JPanel();
+        header.setOpaque(false);
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.add(AppTheme.title("Welcome back"));
+        header.add(Box.createVerticalStrut(6));
+        header.add(AppTheme.muted("Sign in to manage your family's tasks and virtual accounts."));
+        root.add(header, BorderLayout.NORTH);
 
-        userNameField = new JTextField(15);
-        passwordField = new JPasswordField(15);
-        userIdComboBox = new JComboBox<>();
-        loginButton = new JButton("Login");
+        JPanel form = AppTheme.card(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.weightx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(0, 0, 7, 0);
+        addField(form, gbc, 0, "Username", userNameField);
+        addField(form, gbc, 2, "Profile", userIdComboBox);
+        addField(form, gbc, 4, "Password", passwordField);
+        gbc.gridy = 6;
+        gbc.insets = new Insets(16, 0, 0, 0);
+        form.add(loginButton, gbc);
+        root.add(form, BorderLayout.CENTER);
+
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 0));
+        footer.setOpaque(false);
+        footer.add(AppTheme.muted("New to FamilyFlow?"));
+        JButton create = AppTheme.secondaryButton("Create account");
+        create.addActionListener(e -> new RegistrationGUI().setVisible(true));
+        footer.add(create);
+        root.add(footer, BorderLayout.SOUTH);
+        return root;
     }
 
-    private void layoutComponents() {
-        setLayout(new GridLayout(4, 2));
-
-        add(new JLabel("Username:"));
-        add(userNameField);
-        add(new JLabel("Password:"));
-        add(passwordField);
-        add(new JLabel("User ID:"));
-        add(userIdComboBox);
-        add(loginButton);
+    private void addField(JPanel panel, GridBagConstraints gbc, int row, String label, JComponent field) {
+        gbc.gridy = row;
+        gbc.insets = new Insets(row == 0 ? 0 : 14, 0, 7, 0);
+        panel.add(AppTheme.fieldLabel(label), gbc);
+        gbc.gridy = row + 1;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(field, gbc);
     }
 
     private void registerEventHandlers() {
-        userNameField.addFocusListener(new FocusAdapter() {
-            @Override
-            public void focusLost(FocusEvent e) {
-                populateUserIdComboBox();
-            }
+        userNameField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { populateUserIdComboBox(); }
+            public void removeUpdate(DocumentEvent e) { populateUserIdComboBox(); }
+            public void changedUpdate(DocumentEvent e) { populateUserIdComboBox(); }
         });
-
-        loginButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                loginUser();
-            }
-        });
+        loginButton.addActionListener(e -> loginUser());
     }
 
     private void populateUserIdComboBox() {
-        String userName = userNameField.getText();
-        List<String> userIds = userController.getUserIdsByUsername(userName);
+        Object previous = userIdComboBox.getSelectedItem();
+        List<String> userIds = userController.getUserIdsByUsername(userNameField.getText().trim());
         userIdComboBox.removeAllItems();
-        for (String userId : userIds) {
-            userIdComboBox.addItem(userId);
-        }
-        if (userIdComboBox.getItemCount() > 0) {
-            userIdComboBox.setSelectedIndex(0);
-        }
+        for (String userId : userIds) userIdComboBox.addItem(userId);
+        if (previous != null) userIdComboBox.setSelectedItem(previous);
+        userIdComboBox.setEnabled(!userIds.isEmpty());
     }
 
     void loginUser() {
-        String userName = userNameField.getText();
-        String password = new String(passwordField.getPassword());
         String userId = (String) userIdComboBox.getSelectedItem();
-
-        if (userId == null || userId.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please select a user ID!", "Error", JOptionPane.ERROR_MESSAGE);
+        String password = new String(passwordField.getPassword());
+        if (userId == null || userId.isBlank()) {
+            AppTheme.showError(this, "Enter a registered username and select its profile.");
             return;
         }
-
-        UserP user = userController.loginWithUserId(userId, password);
-        if (user != null) {
-            JOptionPane.showMessageDialog(this, "Login successful!", "Success", JOptionPane.INFORMATION_MESSAGE);
-            new MainAppGUI(user).setVisible(true); // Assuming MainAppGUI is the main application window
-            dispose();
-        } else {
-            JOptionPane.showMessageDialog(this, "Invalid username or password!", "Error", JOptionPane.ERROR_MESSAGE);
+        if (password.isEmpty()) {
+            AppTheme.showError(this, "Password cannot be empty.");
+            return;
         }
+        UserP user = userController.loginWithUserId(userId, password);
+        if (user == null) {
+            AppTheme.showError(this, "The password is incorrect for the selected profile.");
+            passwordField.selectAll();
+            passwordField.requestFocusInWindow();
+            return;
+        }
+        new MainAppGUI(user).setVisible(true);
+        dispose();
     }
 
     public static void main(String[] args) {
+        AppTheme.install();
         SwingUtilities.invokeLater(() -> new LoginGUI().setVisible(true));
     }
 }

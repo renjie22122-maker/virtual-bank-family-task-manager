@@ -10,6 +10,22 @@
 - 活期账户、定期账户、存取款与转账
 - JSON 本地数据持久化
 - JFreeChart 图表支持
+- 统一的现代化界面主题、表单校验和友好错误提示
+
+## 架构
+
+本项目是单机 Java Swing 应用，因此不是通过 HTTP 部署的 Web“前后端分离”。代码采用适合桌面应用的分层结构，让界面与业务、存储保持边界：
+
+```text
+Swing View → Application Service / Controller → Domain Service → DAO → JSON files
+```
+
+- **View**：只负责输入、展示和用户交互，不直接读写数据文件。
+- **Application Service**：编排任务确认、奖励转账等跨模块用例，并向界面提供只读 DTO。
+- **Domain Service**：集中处理任务状态、权限、重复任务及账户业务规则。
+- **DAO / Infrastructure**：集中负责 JSON 持久化，可在未来替换为数据库实现。
+
+任务看板通过 `TaskView` 与存储格式解耦，界面不再解析任务 JSON；`TaskApplicationService` 统一协调任务和账户操作。新增页面时应继续遵循以上依赖方向，避免在 Swing 类中直接访问 JSON 文件。
 
 ## 运行要求
 

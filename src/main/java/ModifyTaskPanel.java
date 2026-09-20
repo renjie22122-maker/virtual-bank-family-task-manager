@@ -1,117 +1,78 @@
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
-import java.util.UUID;
-import org.json.simple.JSONObject;
 
 public class ModifyTaskPanel {
-    private JPanel mainPanel;
-    private JTextField nameField;
-    private JTextArea descriptionArea;
-    private JComboBox<Integer> urgencyComboBox;
-    private JComboBox<String> repeatComboBox;
-    private JTextField rewardField;
-    private JTextField maxBonusField;
-    private JSpinner startTimeSpinner;
-    private JSpinner endTimeSpinner;
-    private JButton saveButton;
-    private JButton cancelButton;
+    private final JPanel mainPanel = AppTheme.page();
+    private final JTextField nameField = AppTheme.field(new JTextField());
+    private final JTextArea descriptionArea = new JTextArea(4, 20);
+    private final JComboBox<Integer> urgency = AppTheme.field(new JComboBox<>(new Integer[]{0, 1, 2, 3, 4, 5}));
+    private final JComboBox<String> repeat = AppTheme.field(new JComboBox<>(new String[]{"None", "Daily", "Weekly", "Monthly"}));
+    private final JTextField reward = AppTheme.field(new JTextField());
+    private final JTextField maxBonus = AppTheme.field(new JTextField());
+    private final JSpinner start = AppTheme.field(new JSpinner(new SpinnerDateModel()));
+    private final JSpinner end = AppTheme.field(new JSpinner(new SpinnerDateModel()));
+    private final TaskView task;
+    private final UserP user;
+    private final TaskApplicationService tasks;
 
-    private JSONObject task;
-    private UserP user;
-    private TaskController taskController;
-
-    public ModifyTaskPanel(JSONObject task, UserP user, TaskController taskController) {
-        this.task = task;
-        this.user = user;
-        this.taskController = taskController;
-        initializeComponents();
-        layoutComponents();
-        registerEventHandlers();
-        populateFields();
+    public ModifyTaskPanel(TaskView task, UserP user, TaskApplicationService tasks) {
+        this.task = task; this.user = user; this.tasks = tasks;
+        start.setEditor(new JSpinner.DateEditor(start, "yyyy-MM-dd HH:mm"));
+        end.setEditor(new JSpinner.DateEditor(end, "yyyy-MM-dd HH:mm"));
+        descriptionArea.setLineWrap(true); descriptionArea.setWrapStyleWord(true); descriptionArea.setFont(AppTheme.BODY);
+        buildUI(); populateFields();
     }
 
-    private void initializeComponents() {
-        mainPanel = new JPanel(new GridLayout(0, 2, 5, 5));
-        nameField = new JTextField();
-        descriptionArea = new JTextArea(5, 20);
-        urgencyComboBox = new JComboBox<>(new Integer[]{0, 1, 2, 3, 4, 5});
-        repeatComboBox = new JComboBox<>(new String[]{"None", "Daily", "Weekly", "Monthly"});
-        rewardField = new JTextField();
-        maxBonusField = new JTextField();
-        startTimeSpinner = new JSpinner(new SpinnerDateModel());
-        endTimeSpinner = new JSpinner(new SpinnerDateModel());
-        saveButton = new JButton("Save");
-        cancelButton = new JButton("Cancel");
-
-        // Configure the date spinners
-        configureDateSpinner(startTimeSpinner);
-        configureDateSpinner(endTimeSpinner);
+    private void buildUI() {
+        JPanel header = new JPanel(); header.setOpaque(false); header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.add(AppTheme.title("Edit task")); header.add(AppTheme.muted("Update the task without exposing storage details to this screen."));
+        mainPanel.add(header, BorderLayout.NORTH);
+        JPanel form = AppTheme.card(new GridLayout(0, 2, 12, 10));
+        add(form, "Task name", nameField); add(form, "Description", AppTheme.scroll(descriptionArea));
+        add(form, "Urgency", urgency); add(form, "Repeat", repeat); add(form, "Reward", reward);
+        add(form, "Maximum bonus", maxBonus); add(form, "Start time", start); add(form, "End time", end);
+        mainPanel.add(form, BorderLayout.CENTER);
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0)); actions.setOpaque(false);
+        JButton cancel = AppTheme.secondaryButton("Cancel"); JButton save = AppTheme.primaryButton("Save changes");
+        cancel.addActionListener(e -> close()); save.addActionListener(e -> save()); actions.add(cancel); actions.add(save);
+        mainPanel.add(actions, BorderLayout.SOUTH);
     }
 
-    private void layoutComponents() {
-        mainPanel.add(new JLabel("Task Name:"));
-        mainPanel.add(nameField);
-        mainPanel.add(new JLabel("Description:"));
-        mainPanel.add(new JScrollPane(descriptionArea));
-        mainPanel.add(new JLabel("Urgency:"));
-        mainPanel.add(urgencyComboBox);
-        mainPanel.add(new JLabel("Repeat:"));
-        mainPanel.add(repeatComboBox);
-        mainPanel.add(new JLabel("Reward:"));
-        mainPanel.add(rewardField);
-        mainPanel.add(new JLabel("Max Bonus:"));
-        mainPanel.add(maxBonusField);
-        mainPanel.add(new JLabel("Start Time:"));
-        mainPanel.add(startTimeSpinner);
-        mainPanel.add(new JLabel("End Time:"));
-        mainPanel.add(endTimeSpinner);
-        mainPanel.add(saveButton);
-        mainPanel.add(cancelButton);
-    }
-
-    private void configureDateSpinner(JSpinner spinner) {
-        JSpinner.DateEditor editor = new JSpinner.DateEditor(spinner, "yyyy-MM-dd HH:mm:ss");
-        spinner.setEditor(editor);
-        spinner.setValue(new Date()); // Set current date as default
-    }
-
-    private void registerEventHandlers() {
-        saveButton.addActionListener(this::onSave);
-        cancelButton.addActionListener(e -> ((JFrame) SwingUtilities.getWindowAncestor(mainPanel)).dispose());
-    }
+    private void add(JPanel panel, String label, JComponent component) { panel.add(AppTheme.fieldLabel(label)); panel.add(component); }
 
     private void populateFields() {
-        nameField.setText((String) task.get("name"));
-        descriptionArea.setText((String) task.get("description"));
-        urgencyComboBox.setSelectedItem(task.get("urgency"));
-        repeatComboBox.setSelectedItem(task.get("repeat"));
-        rewardField.setText(task.get("reward").toString());
-        maxBonusField.setText(task.get("maxBonus").toString());
-        startTimeSpinner.setValue(Date.from(LocalDateTime.parse((String) task.get("startTime")).atZone(ZoneId.systemDefault()).toInstant()));
-        endTimeSpinner.setValue(Date.from(LocalDateTime.parse((String) task.get("endTime")).atZone(ZoneId.systemDefault()).toInstant()));
+        nameField.setText(task.name()); descriptionArea.setText(task.description()); urgency.setSelectedItem(task.urgency());
+        repeat.setSelectedItem(task.repeat()); reward.setText(Double.toString(task.reward()));
+        maxBonus.setText(Double.toString(task.maxBonus())); start.setValue(toDate(task.startTime())); end.setValue(toDate(task.endTime()));
     }
 
-    private void onSave(ActionEvent e) {
-        task.put("name", nameField.getText());
-        task.put("description", descriptionArea.getText());
-        task.put("urgency", urgencyComboBox.getSelectedItem());
-        task.put("repeat", repeatComboBox.getSelectedItem());
-        task.put("reward", Double.parseDouble(rewardField.getText()));
-        task.put("maxBonus", Double.parseDouble(maxBonusField.getText()));
-        task.put("startTime", LocalDateTime.ofInstant(((Date) startTimeSpinner.getValue()).toInstant(), ZoneId.systemDefault()).toString());
-        task.put("endTime", LocalDateTime.ofInstant(((Date) endTimeSpinner.getValue()).toInstant(), ZoneId.systemDefault()).toString());
-
-        taskController.modifyTask(UUID.fromString((String) task.get("TaskID")), task, user);
-
-        JOptionPane.showMessageDialog(mainPanel, "Task modified successfully!");
-        ((JFrame) SwingUtilities.getWindowAncestor(mainPanel)).dispose();
+    private void save() {
+        try {
+            String name = nameField.getText().trim(); if (name.isEmpty()) throw new IllegalArgumentException("Task name cannot be empty.");
+            double rewardValue = parseNumber(reward.getText(), "Reward");
+            double bonusValue = parseNumber(maxBonus.getText(), "Maximum bonus");
+            LocalDateTime startValue = toLocal(start); LocalDateTime endValue = toLocal(end);
+            if (!startValue.isBefore(endValue)) throw new IllegalArgumentException("End time must be after start time.");
+            tasks.updateTask(task.id(), new TaskApplicationService.TaskUpdate(name, descriptionArea.getText().trim(),
+                    (Integer) urgency.getSelectedItem(), (String) repeat.getSelectedItem(), rewardValue, bonusValue,
+                    startValue.toString(), endValue.toString(), task.settlementType()), user);
+            AppTheme.showSuccess(mainPanel, "Task updated."); close();
+        } catch (RuntimeException exception) { AppTheme.showError(mainPanel, exception.getMessage()); }
     }
 
-    public JPanel getMainPanel() {
-        return mainPanel;
+    private double parseNumber(String text, String name) {
+        try { double value = Double.parseDouble(text.trim()); if (!Double.isFinite(value) || value < 0) throw new NumberFormatException(); return value; }
+        catch (NumberFormatException exception) { throw new IllegalArgumentException(name + " must be a non-negative number."); }
     }
+
+    private Date toDate(String value) {
+        try { return Date.from(LocalDateTime.parse(value).atZone(ZoneId.systemDefault()).toInstant()); }
+        catch (RuntimeException exception) { return new Date(); }
+    }
+    private LocalDateTime toLocal(JSpinner spinner) { return ((Date) spinner.getValue()).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime(); }
+    private void close() { Window window = SwingUtilities.getWindowAncestor(mainPanel); if (window != null) window.dispose(); }
+    public JPanel getMainPanel() { return mainPanel; }
 }
