@@ -3,7 +3,20 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Frontend dependencies and build output ###
+node_modules/
+dist/
+coverage/
+.vite/
+
+### Local configuration ###
+.env
+.env.*
+!.env.example
+
 ### IntelliJ IDEA ###
+.idea/workspace.xml
+.idea/shelf/
 .idea/modules.xml
 .idea/jarRepositories.xml
 .idea/compiler.xml
@@ -45,4 +58,5 @@ users.json
 error_log.txt
 logout_log.txt
 app-*.log
+*.log
 *.bak

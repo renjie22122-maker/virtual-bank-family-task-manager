@@ -1,0 +1,19 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: familyflow-api
+  jackson:
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+familyflow:
+  data-dir: ${APP_DATA_DIR:../data}
+  legacy-dir: ${LEGACY_DATA_DIR:..}
+  cors-origin: ${CORS_ORIGIN:http://localhost:5173}
